@@ -33,8 +33,6 @@ class Person implements Comparable {
   String toString() =>
       'Person, ID = $id, firstName = $firstName, lastName = $lastName';
 
-  @override
-  int get hashCode => super.hashCode;
 }
 
 class PersonDB {
@@ -200,7 +198,7 @@ typedef OnCompose = void Function(String firstName, String lastName);
 class ComposeWidget extends StatefulWidget {
   final OnCompose onCompose;
 
-  const ComposeWidget({Key? key, required this.onCompose}) : super(key: key);
+  const ComposeWidget({super.key, required this.onCompose});
 
   @override
   State<ComposeWidget> createState() => _ComposeWidgetState();
@@ -278,7 +276,7 @@ class _ComposeWidgetState extends State<ComposeWidget> {
 }
 
 class HomePage extends StatefulWidget {
-  const HomePage({Key? key}) : super(key: key);
+  const HomePage({super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
