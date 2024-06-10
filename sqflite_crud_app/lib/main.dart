@@ -1,125 +1,457 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path_provider/path_provider.dart'
+    show getApplicationDocumentsDirectory;
 
 void main() {
-  runApp(const MyApp());
+  runApp(const HomePage());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class Person implements Comparable {
+  final int id;
+  final String firstName;
+  final String lastName;
+  const Person(this.id, this.firstName, this.lastName);
 
-  // This widget is the root of your application.
+  String get fullName => '$firstName $lastName';
+
+  Person.fromData(Map<String, Object?> data)
+      : id = data['ID'] as int,
+        firstName = data['FIRST_NAME'] as String,
+        lastName = data['LAST_NAME'] as String;
+
+  @override
+  int compareTo(covariant Person other) => other.id.compareTo(id);
+
+  @override
+  bool operator ==(covariant Person other) => id == other.id;
+
+  @override
+  String toString() =>
+      'Person, ID = $id, firstName = $firstName, lastName = $lastName';
+
+  @override
+  int get hashCode => super.hashCode;
+}
+
+class PersonDB {
+  final _controller = StreamController<List<Person>>.broadcast();
+  List<Person> _persons = [];
+  Database? _db;
+  final String dbName;
+  PersonDB({required this.dbName});
+
+  Future<bool> close() async {
+    final db = _db;
+    if (db == null) {
+      return false;
+    }
+    await db.close();
+    return true;
+  }
+
+  Future<bool> open() async {
+    if (_db != null) {
+      return true;
+    }
+    final directory = await getApplicationDocumentsDirectory();
+    final path = '${directory.path}/$dbName';
+    try {
+      final db = await openDatabase(path);
+      _db = db;
+
+      // create the table if it doesn't exist
+
+      const create = '''CREATE TABLE IF NOT EXISTS PEOPLE (
+          ID INTEGER PRIMARY KEY AUTOINCREMENT,
+          FIRST_NAME STRING NOT NULL,
+          LAST_NAME STRING NOT NULL
+        )''';
+
+      await db.execute(create);
+
+      // if everything went fine, we then read all the objects
+      // and populate the stream
+
+      _persons = await _fetchPeople();
+      _controller.add(_persons);
+      return true;
+    } catch (e) {
+      print('error = $e');
+      return false;
+    }
+  }
+
+  Future<List<Person>> _fetchPeople() async {
+    final db = _db;
+    if (db == null) {
+      return [];
+    }
+
+    try {
+      // read the existing data if any
+      final readResult = await db.query(
+        'PEOPLE',
+        distinct: true,
+        columns: ['ID', 'FIRST_NAME', 'LAST_NAME'],
+        orderBy: 'ID',
+      );
+
+      final people = readResult.map((row) => Person.fromData(row)).toList();
+      return people;
+    } catch (e) {
+      print('error = $e');
+      return [];
+    }
+  }
+
+  Future<bool> delete(Person person) async {
+    final db = _db;
+    if (db == null) {
+      return false;
+    }
+    try {
+      final deletedCount = await db.delete(
+        'PEOPLE',
+        where: 'ID = ?',
+        whereArgs: [person.id],
+      );
+
+      // delete it locally as well
+
+      if (deletedCount == 1) {
+        _persons.remove(person);
+        _controller.add(_persons);
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('Error inserting $e');
+      return false;
+    }
+  }
+
+  Future<bool> create(String firstName, String lastName) async {
+    final db = _db;
+    if (db == null) {
+      return false;
+    }
+    try {
+      final id = await db.insert(
+        'PEOPLE',
+        {
+          'FIRST_NAME': firstName,
+          'LAST_NAME': lastName,
+        },
+      );
+
+      final person = Person(id, firstName, lastName);
+      _persons.add(person);
+      _controller.add(_persons);
+
+      return true;
+    } catch (e) {
+      print('Error inserting $e');
+      return false;
+    }
+  }
+
+  // uses the person's id to update its first name and last name
+  Future<bool> update(Person person) async {
+    final db = _db;
+    if (db == null) {
+      return false;
+    }
+    try {
+      final updatedCount = await db.update(
+        'PEOPLE',
+        {
+          'FIRST_NAME': person.firstName,
+          'LAST_NAME': person.lastName,
+        },
+        where: 'ID = ?',
+        whereArgs: [person.id],
+      );
+
+      if (updatedCount == 1) {
+        _persons.removeWhere((p) => p.id == person.id);
+        _persons.add(person);
+        _controller.add(_persons);
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('Error inserting $e');
+      return false;
+    }
+  }
+
+  Stream<List<Person>> all() =>
+      _controller.stream.map((event) => event..sort());
+}
+
+typedef OnCompose = void Function(String firstName, String lastName);
+
+class ComposeWidget extends StatefulWidget {
+  final OnCompose onCompose;
+
+  const ComposeWidget({Key? key, required this.onCompose}) : super(key: key);
+
+  @override
+  State<ComposeWidget> createState() => _ComposeWidgetState();
+}
+
+class _ComposeWidgetState extends State<ComposeWidget> {
+  final firstNameController = TextEditingController();
+  final lastNameController = TextEditingController();
+
+  @override
+  void dispose() {
+    firstNameController.dispose();
+    lastNameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(children: [
+        SizedBox(
+          height: 50,
+          child: TextField(
+            style: const TextStyle(fontSize: 24),
+            decoration: const InputDecoration(
+                hintText: 'Enter first name',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.purple)),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.purple)),
+                enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.purple))),
+            controller: firstNameController,
+          ),
+        ),
+        const SizedBox(
+          height: 30,
+        ),
+        SizedBox(
+          height: 50,
+          child: TextField(
+            style: const TextStyle(
+              fontSize: 24,
+            ),
+            decoration: const InputDecoration(
+                hintText: 'Enter last name',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.purple)),
+                focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.purple)),
+                enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.purple))),
+            controller: lastNameController,
+          ),
+        ),
+        TextButton(
+          onPressed: () {
+            final firstName = firstNameController.text;
+            final lastName = lastNameController.text;
+            widget.onCompose(firstName, lastName);
+          },
+          child: const Text(
+            'Add to list',
+            style: TextStyle(fontSize: 24),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+class HomePage extends StatefulWidget {
+  const HomePage({Key? key}) : super(key: key);
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  late final PersonDB _crudStorage;
+
+  @override
+  void initState() {
+    _crudStorage = PersonDB(dbName: 'db.sqlite');
+    _crudStorage.open();
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    _crudStorage.close();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text('SQLite in Flutter'),
+        ),
+        body: StreamBuilder(
+          stream: _crudStorage.all(),
+          builder: (context, snapshot) {
+            switch (snapshot.connectionState) {
+              case ConnectionState.active:
+              case ConnectionState.waiting:
+                if (snapshot.data == null) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final people = snapshot.data as List<Person>;
+                return Column(
+                  children: [
+                    ComposeWidget(
+                      onCompose: (firstName, lastName) async {
+                        await _crudStorage.create(firstName, lastName);
+                      },
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: people.length,
+                        itemBuilder: (context, index) {
+                          final person = people[index];
+                          return ListTile(
+                            onTap: () async {
+                              final update =
+                                  await showUpdateDialog(context, person);
+                              if (update == null) {
+                                return;
+                              }
+                              await _crudStorage.update(update);
+                            },
+                            title: Text(
+                              person.fullName,
+                              style: const TextStyle(fontSize: 24),
+                            ),
+                            subtitle: Text(
+                              'ID: ${person.id}',
+                              style: const TextStyle(fontSize: 18),
+                            ),
+                            trailing: TextButton(
+                              onPressed: () async {
+                                final shouldDelete =
+                                    await showDeleteDialog(context);
+                                if (shouldDelete) {
+                                  await _crudStorage.delete(person);
+                                }
+                              },
+                              child: const Icon(
+                                Icons.disabled_by_default_rounded,
+                                color: Colors.red,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              default:
+                return const Center(child: CircularProgressIndicator());
+            }
+          },
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
+}
+
+final firstNameController = TextEditingController();
+final lastNameController = TextEditingController();
+
+Future<Person?> showUpdateDialog(BuildContext context, Person person) {
+  firstNameController.text = person.firstName;
+  lastNameController.text = person.lastName;
+  return showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter your udpated values here:'),
+            TextField(controller: firstNameController),
+            TextField(controller: lastNameController),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(null);
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final newPerson = Person(
+                person.id,
+                firstNameController.text,
+                lastNameController.text,
+              );
+              Navigator.of(context).pop(newPerson);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      );
+    },
+  ).then((value) {
+    if (value is Person) {
+      return value;
+    } else {
+      return null;
+    }
+  });
+}
+
+Future<bool> showDeleteDialog(BuildContext context) {
+  return showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        content: const Text('Are you sure you want to delete this item?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(false);
+            },
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(true);
+            },
+            child: const Text('Delete'),
+          )
+        ],
+      );
+    },
+  ).then(
+    (value) {
+      if (value is bool) {
+        return value;
+      } else {
+        return false;
+      }
+    },
+  );
 }
