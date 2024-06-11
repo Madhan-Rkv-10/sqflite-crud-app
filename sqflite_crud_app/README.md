@@ -1,16 +1,34 @@
 # sqflite_crud_app
-
-A new Flutter project.
-
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+<table align="center" style="margin: 0px auto;">
+  <tr>
+    <td style="text-align: center;">
+      <div>
+        <img src="output/output.gif" alt="CoverSliderView" height="250">
+        <p><a href="lib/main.dart" target="_blank">SQFLITE CRUD APP</a></p>
+      </div>
+    </td>
+   
+  </tr>
+  <tr> 
+  
 
-A few resources to get you started if this is your first Flutter project:
+  </tr>
+</table>
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Packages Used
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+This project uses the following packages:
+- **sqflite**: A Flutter plugin for SQLite, a self-contained, high-reliability, embedded, SQL database engine.
+- **path_provider**: A Flutter plugin for finding commonly used locations on the filesystem. Supports iOS, Android, Linux, macOS, and Windows.
+
+## Navigation Instructions
+
+To view a particular image, click on the corresponding image above. This will open the image in your browser or image viewer.
+
+To navigate to a specific file:
+- For Windows users: Right-click on the image and select "Open link in new tab" to view the file directly.
+- For macOS users: Control-click on the image and select "Open link in new tab" to view the file directly.
+
+Alternatively, you can navigate to the `assets` folder in this repository and find the image file by its name.
