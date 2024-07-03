@@ -1,4 +1,4 @@
-# sqflite_crud_app
+
 ## Getting Started
 
 <table align="center" style="margin: 0px auto;">
